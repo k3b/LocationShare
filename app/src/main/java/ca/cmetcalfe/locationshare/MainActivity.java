@@ -4,7 +4,10 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.DialogInterface.OnClickListener;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,8 +15,6 @@ import android.os.Bundle;
 import java.text.MessageFormat;
 import java.util.Locale;
 
-import android.content.Context;
-import android.content.Intent;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -21,9 +22,6 @@ import android.net.Uri;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
-import android.support.annotation.NonNull;
-import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -32,6 +30,10 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog.Builder;
+import androidx.appcompat.app.AppCompatActivity;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -55,12 +57,15 @@ public class MainActivity extends AppCompatActivity {
         public void onLocationChanged(Location loc) {
             updateLocation(loc);
         }
+
         public void onProviderEnabled(String provider) {
             updateLocation();
         }
+
         public void onProviderDisabled(String provider) {
             updateLocation();
         }
+
         public void onStatusChanged(String provider, int status, Bundle extras) {
         }
     };
@@ -75,7 +80,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        setSupportActionBar((Toolbar)findViewById(R.id.toolbar));
+        setSupportActionBar(findViewById(R.id.toolbar));
 
         Intent intent = getIntent();
 
@@ -174,10 +179,10 @@ public class MainActivity extends AppCompatActivity {
 
         if (haveLocation) {
             String newline = System.getProperty("line.separator");
-            detailsText.setText(String.format("%s: %s%s%s: %s%s%s: %s",
+            detailsText.setText(String.format("%s: %s%s%s: %s (%s)%s%s: %s (%s)",
                     getString(R.string.accuracy), getAccuracy(location), newline,
-                    getString(R.string.latitude), getLatitude(location), newline,
-                    getString(R.string.longitude), getLongitude(location)));
+                    getString(R.string.latitude), getLatitude(location), getDMSLatitude(location), newline,
+                    getString(R.string.longitude), getLongitude(location), getDMSLongitude(location)));
 
             lastLocation = location;
 
@@ -190,14 +195,14 @@ public class MainActivity extends AppCompatActivity {
     // ----------------------------------------------------
     // DialogInterface Listeners
     // ----------------------------------------------------
-    private class onClickShareListener implements DialogInterface.OnClickListener {
+    private class onClickShareListener implements OnClickListener {
         @Override
         public void onClick(DialogInterface dialog, int i) {
             shareLocationText(formatLocation(lastLocation, getResources().getStringArray(R.array.link_options)[i]));
         }
     }
 
-    private class onClickCopyListener implements DialogInterface.OnClickListener {
+    private class onClickCopyListener implements OnClickListener {
         @Override
         public void onClick(DialogInterface dialog, int i) {
             copyLocationText(formatLocation(lastLocation, getResources().getStringArray(R.array.link_options)[i]));
@@ -211,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         this.getMenuInflater().inflate(R.menu.menu_toolbar, menu);
-        return  true;
+        return true;
     }
 
     @Override
@@ -256,7 +261,7 @@ public class MainActivity extends AppCompatActivity {
         String linkChoice = PreferenceManager.getDefaultSharedPreferences(this).getString("prefLinkType", "");
 
         if (linkChoice.equals(getResources().getString(R.string.always_ask))) {
-            new AlertDialog.Builder(this).setTitle(R.string.choose_link)
+            new Builder(this).setTitle(R.string.choose_link)
                     .setCancelable(true)
                     .setItems(R.array.link_names, new onClickCopyListener())
                     .create()
@@ -286,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
     // ----------------------------------------------------
     // Helper functions
     // ----------------------------------------------------
-    public void shareLocationText(String string){
+    public void shareLocationText(String string) {
         Intent intent = new Intent();
         intent.setAction(Intent.ACTION_SEND);
         intent.putExtra(Intent.EXTRA_TEXT, string);
@@ -294,14 +299,13 @@ public class MainActivity extends AppCompatActivity {
         startActivity(Intent.createChooser(intent, getString(R.string.share_location_via)));
     }
 
-    public void copyLocationText(String string){
-        ClipboardManager clipboard = (ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard != null){
+    public void copyLocationText(String string) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
             ClipData clip = ClipData.newPlainText(getString(R.string.app_name), string);
             clipboard.setPrimaryClip(clip);
             Toast.makeText(getApplicationContext(), R.string.copied, Toast.LENGTH_SHORT).show();
-        }
-        else {
+        } else {
             Log.e(TAG, "Failed to get the clipboard service");
             Toast.makeText(getApplicationContext(), R.string.clipboard_error, Toast.LENGTH_SHORT).show();
         }
@@ -331,9 +335,8 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT < 17) {
             return System.currentTimeMillis() - location.getTime() < 30e3;
         } else {
-            return SystemClock.elapsedRealtime() - location.getElapsedRealtimeNanos() < 30e9;
+            return SystemClock.elapsedRealtimeNanos() - location.getElapsedRealtimeNanos() < 30e9;
         }
-
     }
 
     private String getAccuracy(Location location) {
@@ -349,6 +352,26 @@ public class MainActivity extends AppCompatActivity {
 
     private String getLatitude(Location location) {
         return String.format(Locale.US, "%2.5f", location.getLatitude());
+    }
+
+    private String getDMSLatitude(Location location) {
+        double val = location.getLatitude();
+        return String.format(Locale.US, "%.0f° %2.0f′ %2.3f″ %s",
+                Math.floor(Math.abs(val)),
+                Math.floor(Math.abs(val * 60) % 60),
+                (Math.abs(val) * 3600) % 60,
+                val > 0 ? "N" : "S"
+        );
+    }
+
+    private String getDMSLongitude(Location location) {
+        double val = location.getLongitude();
+        return String.format(Locale.US, "%.0f° %2.0f′ %2.3f″ %s",
+                Math.floor(Math.abs(val)),
+                Math.floor(Math.abs(val * 60) % 60),
+                (Math.abs(val) * 3600) % 60,
+                val > 0 ? "E" : "W"
+        );
     }
 
     private String getLongitude(Location location) {
